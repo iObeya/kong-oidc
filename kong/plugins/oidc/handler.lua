@@ -4,19 +4,22 @@ local OidcHandler = {
 }
 local utils = require("kong.plugins.oidc.utils")
 local filter = require("kong.plugins.oidc.filter")
-local session = require("kong.plugins.oidc.session")
+local oidcSession = require("kong.plugins.oidc.session")
+local string = string
 
 function OidcHandler:access(config)
   local oidcConfig = utils.get_options(config, ngx)
 
   if filter.shouldProcessRequest(oidcConfig) then
-    session.configure(config)
+    oidcSession.configure(config)
     handle(oidcConfig)
   else
     ngx.log(ngx.DEBUG, "OidcHandler ignoring request, path: " .. ngx.var.request_uri)
   end
 
   ngx.log(ngx.DEBUG, "OidcHandler done")
+
+  require("resty.openidc").set_logging(nil, { DEBUG = ngx.INFO })
 end
 
 function handle(oidcConfig)
@@ -46,12 +49,15 @@ end
 
 function make_oidc(oidcConfig)
   ngx.log(ngx.DEBUG, "OidcHandler calling authenticate, requested path: " .. ngx.var.request_uri)
-  local res, err = require("resty.openidc").authenticate(oidcConfig)
+  local res, err, session = require("resty.openidc").authenticate(oidcConfig)
   if err then
     if oidcConfig.recovery_page_path then
       ngx.log(ngx.DEBUG, "Entering recovery page: " .. oidcConfig.recovery_page_path)
       ngx.redirect(oidcConfig.recovery_page_path)
     end
+    local errorDetails = string.format("err=%s, Session present=%s, id_token present=%s, authenticated=%s",
+    err, session.present, session.data.id_token ~= nil, session.data.authenticated)
+    ngx.log(ngx.ERR, errorDetails)
     utils.exit(500, err, ngx.HTTP_INTERNAL_SERVER_ERROR)
   end
   return res

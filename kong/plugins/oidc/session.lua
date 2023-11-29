@@ -10,6 +10,9 @@ function M.configure(config)
     end
     ngx.var.session_secret = decoded_session_secret
   end
+  if config.session_name then
+    ngx.var.session_name = config.session_name
+  end
 end
 
 return M
